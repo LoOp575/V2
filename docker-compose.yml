@@ -1,0 +1,21 @@
+services:
+  backend:
+    build: ./backend
+    container_name: cit-backend
+    env_file:
+      - ./backend/.env
+    ports:
+      - "8000:8000"
+    restart: unless-stopped
+
+  frontend:
+    build: ./frontend
+    container_name: cit-frontend
+    environment:
+      NEXT_PUBLIC_API_BASE: http://localhost:8000
+      NEXT_PUBLIC_WS_URL: ws://localhost:8000/api/ws
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+    restart: unless-stopped
