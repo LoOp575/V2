@@ -4,53 +4,103 @@ import { useStore } from "./store";
 import type { WSPayload } from "./types";
 
 /**
- * Resolve backend URLs.
- * Supports:
- *  - Explicit env vars (NEXT_PUBLIC_API_BASE / NEXT_PUBLIC_WS_URL)
- *  - Platform routing with experimentalServices (backend at /_/backend)
- *  - Local dev fallback (localhost:8000)
+ * Live-data hook with three transport modes:
+ *
+ *   1. WebSocket (preferred)  - if NEXT_PUBLIC_WS_URL is set or a
+ *      same-origin /_/backend mount is detected.
+ *   2. REST polling            - fallback on Vercel and any platform
+ *      that does not support WebSocket.
+ *   3. Local in-app API route  - on Vercel the snapshot is computed
+ *      by /api/snapshot (Next.js route handler).
  */
+
+const POLL_MS = 5000;
+
 function getApiBase(): string {
+  // Explicit override (FastAPI deploy on a separate host)
   if (process.env.NEXT_PUBLIC_API_BASE) return process.env.NEXT_PUBLIC_API_BASE;
-  if (typeof window === "undefined") return "http://localhost:8000";
-  // Platform deploy: backend is at same origin under /_/backend
-  return `${window.location.origin}/_/backend`;
+  if (typeof window === "undefined") return "";
+  // Same-origin: API route at /api on Vercel, /_/backend/api when
+  // self-hosting alongside FastAPI under a reverse proxy.
+  return window.location.origin;
 }
 
-function getWsUrl(): string {
+function getWsUrl(): string | null {
   if (process.env.NEXT_PUBLIC_WS_URL) return process.env.NEXT_PUBLIC_WS_URL;
-  if (typeof window === "undefined") return "ws://localhost:8000/api/ws";
-  const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
-  return `${proto}//${window.location.host}/_/backend/api/ws`;
+  // No WS by default - Vercel can't host it. Self-hosters set the env.
+  return null;
+}
+
+function getSnapshotPath(): string {
+  // If user pointed NEXT_PUBLIC_API_BASE at a FastAPI deployment,
+  // it exposes /api/snapshot. Same path works for the Next.js
+  // route handler in this app.
+  return "/api/snapshot";
 }
 
 export function useTerminalSocket() {
   const apply = useStore((s) => s.apply);
   const setConnected = useStore((s) => s.setConnected);
   const wsRef = useRef<WebSocket | null>(null);
-  const retryRef = useRef<number | null>(null);
+  const wsRetry = useRef<number | null>(null);
+  const pollTimer = useRef<number | null>(null);
+  const cancelled = useRef(false);
 
   useEffect(() => {
-    let cancelled = false;
+    cancelled.current = false;
     const API_BASE = getApiBase();
     const WS_URL = getWsUrl();
+    const SNAP = `${API_BASE}${getSnapshotPath()}`;
 
-    // initial REST snapshot - lets us paint immediately
-    fetch(`${API_BASE}/api/snapshot`)
-      .then((r) => (r.ok ? r.json() : null))
-      .then((j) => {
-        if (j && !cancelled) apply({ type: "snapshot", data: j.data, feeds: j.feeds });
-      })
-      .catch(() => {});
+    const fetchSnapshot = async () => {
+      try {
+        const r = await fetch(SNAP, { cache: "no-store" });
+        if (!r.ok) return false;
+        const j = await r.json();
+        if (cancelled.current) return false;
+        apply({ type: "snapshot", data: j.data, feeds: j.feeds } as WSPayload);
+        setConnected(true);
+        return true;
+      } catch {
+        setConnected(false);
+        return false;
+      }
+    };
 
-    const connect = () => {
+    // ---- polling loop (always available, also our initial paint) ----
+    const startPolling = () => {
+      if (pollTimer.current) return;
+      const tick = async () => {
+        if (cancelled.current) return;
+        await fetchSnapshot();
+        if (cancelled.current) return;
+        pollTimer.current = window.setTimeout(tick, POLL_MS);
+      };
+      tick();
+    };
+
+    const stopPolling = () => {
+      if (pollTimer.current) {
+        window.clearTimeout(pollTimer.current);
+        pollTimer.current = null;
+      }
+    };
+
+    // ---- ws (only if explicitly configured) ----
+    const connectWs = () => {
+      if (!WS_URL) return;
       try {
         const ws = new WebSocket(WS_URL);
         wsRef.current = ws;
-        ws.onopen = () => setConnected(true);
+        ws.onopen = () => {
+          setConnected(true);
+          stopPolling(); // ws is live, drop polling
+        };
         ws.onclose = () => {
           setConnected(false);
-          retryRef.current = window.setTimeout(connect, 2000);
+          startPolling(); // fallback while we reconnect
+          if (cancelled.current) return;
+          wsRetry.current = window.setTimeout(connectWs, 3000);
         };
         ws.onerror = () => ws.close();
         ws.onmessage = (e) => {
@@ -60,14 +110,18 @@ export function useTerminalSocket() {
           } catch {}
         };
       } catch {
-        retryRef.current = window.setTimeout(connect, 2000);
+        wsRetry.current = window.setTimeout(connectWs, 3000);
       }
     };
-    connect();
+
+    // Start polling immediately. If a WS URL is set, try to upgrade.
+    startPolling();
+    connectWs();
 
     return () => {
-      cancelled = true;
-      if (retryRef.current) window.clearTimeout(retryRef.current);
+      cancelled.current = true;
+      stopPolling();
+      if (wsRetry.current) window.clearTimeout(wsRetry.current);
       wsRef.current?.close();
     };
   }, [apply, setConnected]);
