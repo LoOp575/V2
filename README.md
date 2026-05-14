@@ -88,7 +88,26 @@ V2/
 
 ## Running it
 
-### Option A - Docker
+### Option A - Vercel (one-click, no backend needed)
+
+The Next.js app ships with an in-app `/api/snapshot` route handler that
+talks to Binance directly, so the **frontend alone is enough**.
+
+1. Push this repo to GitHub.
+2. On Vercel: New Project -> import the repo.
+3. Set **Root Directory** to `frontend`.
+4. (Optional) `SYMBOLS=BTCUSDT,ETHUSDT,SOLUSDT` env var.
+5. Deploy.
+
+The terminal will poll `/api/snapshot` every 5 seconds and render live.
+No FastAPI service is required. Vercel cannot host WebSocket, so the
+client uses REST polling on Vercel - the math and detection are the
+same.
+
+### Option B - Docker (frontend + FastAPI backend)
+
+Use this when you want the persistent rolling-window normalizer and
+WebSocket stream from the FastAPI service.
 
 ```bash
 cd V2
@@ -98,7 +117,7 @@ docker compose up --build
 # backend   http://localhost:8000/docs
 ```
 
-### Option B - Local dev
+### Option C - Local dev
 
 Backend:
 
@@ -120,6 +139,21 @@ npm run dev
 ```
 
 Open http://localhost:3000.
+
+## Two deploy modes, one math
+
+| layer            | Vercel (zero-backend)              | Self-hosted (FastAPI)               |
+|------------------|------------------------------------|-------------------------------------|
+| math engine      | TS port in `frontend/src/server`   | Python in `backend/app/engine`      |
+| transport        | REST polling (5s)                  | WebSocket + REST                    |
+| normalization    | percentile per request             | persistent 720-tick rolling window  |
+| feeds history    | last tick only                     | rolling 120 events / feed           |
+| where to deploy  | Vercel                             | Railway / Render / Fly / VPS        |
+| cost             | free                               | varies                              |
+
+The TS port is a faithful re-implementation of the Python engines: same
+CPI formula, same interaction set, same detection thresholds, same
+flag rules. Switching deploy mode does not change the model.
 
 ## Configuration
 
