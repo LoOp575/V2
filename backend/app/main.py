@@ -32,6 +32,7 @@ app = FastAPI(
     description="Quant-grade crypto intelligence: CPI scoring, "
                 "interaction matrix, accumulation/distribution detection.",
     lifespan=lifespan,
+    root_path=settings.root_path,
 )
 
 app.add_middleware(

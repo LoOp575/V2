@@ -3,8 +3,26 @@ import { useEffect, useRef } from "react";
 import { useStore } from "./store";
 import type { WSPayload } from "./types";
 
-const WS_URL = process.env.NEXT_PUBLIC_WS_URL || "ws://localhost:8000/api/ws";
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE || "http://localhost:8000";
+/**
+ * Resolve backend URLs.
+ * Supports:
+ *  - Explicit env vars (NEXT_PUBLIC_API_BASE / NEXT_PUBLIC_WS_URL)
+ *  - Platform routing with experimentalServices (backend at /_/backend)
+ *  - Local dev fallback (localhost:8000)
+ */
+function getApiBase(): string {
+  if (process.env.NEXT_PUBLIC_API_BASE) return process.env.NEXT_PUBLIC_API_BASE;
+  if (typeof window === "undefined") return "http://localhost:8000";
+  // Platform deploy: backend is at same origin under /_/backend
+  return `${window.location.origin}/_/backend`;
+}
+
+function getWsUrl(): string {
+  if (process.env.NEXT_PUBLIC_WS_URL) return process.env.NEXT_PUBLIC_WS_URL;
+  if (typeof window === "undefined") return "ws://localhost:8000/api/ws";
+  const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
+  return `${proto}//${window.location.host}/_/backend/api/ws`;
+}
 
 export function useTerminalSocket() {
   const apply = useStore((s) => s.apply);
@@ -14,6 +32,8 @@ export function useTerminalSocket() {
 
   useEffect(() => {
     let cancelled = false;
+    const API_BASE = getApiBase();
+    const WS_URL = getWsUrl();
 
     // initial REST snapshot - lets us paint immediately
     fetch(`${API_BASE}/api/snapshot`)
