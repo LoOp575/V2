@@ -1,5 +1,4 @@
 "use client";
-import { motion } from "framer-motion";
 
 export function CPIGauge({ value, phase, regime }: {
   value: number;
@@ -32,16 +31,12 @@ export function CPIGauge({ value, phase, regime }: {
         <path d={arc} stroke="#1B2430" strokeWidth="10" fill="none" strokeLinecap="round" />
         <path d={progArc} stroke={color} strokeWidth="10" fill="none" strokeLinecap="round"
               style={{ filter: `drop-shadow(0 0 6px ${color})` }} />
-        <motion.g
-          initial={false}
-          animate={{ rotate: angle }}
-          style={{ originX: `${cx}px`, originY: `${cy}px` }}
-        >
+        <g style={{ transform: `rotate(${angle}deg)`, transformOrigin: `${cx}px ${cy}px`, transition: "transform 0.6s ease-out" }}>
           <line
             x1={cx} y1={cy} x2={cx} y2={cy - r + 8}
             stroke={color} strokeWidth="2" strokeLinecap="round"
           />
-        </motion.g>
+        </g>
         <circle cx={cx} cy={cy} r={5} fill={color} />
       </svg>
       <div className="text-3xl tabular-nums font-semibold mt-1" style={{ color }}>
