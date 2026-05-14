@@ -12,7 +12,8 @@ class Settings(BaseSettings):
     symbols: str = Field(default="BTCUSDT,ETHUSDT,SOLUSDT")
     refresh_interval: float = Field(default=5.0)
     history_size: int = Field(default=720)
-    cors_origins: str = Field(default="http://localhost:3000")
+    cors_origins: str = Field(default="*")
+    root_path: str = Field(default="")
 
     coingecko_api_key: str | None = None
     arkham_api_key: str | None = None

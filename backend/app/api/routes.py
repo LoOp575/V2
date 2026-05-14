@@ -57,13 +57,12 @@ async def ws(websocket: WebSocket) -> None:
 
     try:
         while True:
-            payload = await asyncio.wait_for(queue.get(), timeout=30.0)
-            await websocket.send_json(payload)
-    except asyncio.TimeoutError:
-        try:
-            await websocket.send_json({"type": "ping"})
-        except Exception:  # noqa: BLE001
-            pass
+            try:
+                payload = await asyncio.wait_for(queue.get(), timeout=25.0)
+                await websocket.send_json(payload)
+            except asyncio.TimeoutError:
+                # Keep-alive ping to prevent proxy / platform timeout
+                await websocket.send_json({"type": "ping"})
     except WebSocketDisconnect:
         pass
     except Exception as e:  # noqa: BLE001

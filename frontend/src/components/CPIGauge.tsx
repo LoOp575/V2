@@ -32,14 +32,16 @@ export function CPIGauge({ value, phase, regime }: {
         <path d={arc} stroke="#1B2430" strokeWidth="10" fill="none" strokeLinecap="round" />
         <path d={progArc} stroke={color} strokeWidth="10" fill="none" strokeLinecap="round"
               style={{ filter: `drop-shadow(0 0 6px ${color})` }} />
-        <motion.line
-          x1={cx} y1={cy} x2={cx} y2={cy - r + 8}
-          stroke={color} strokeWidth="2" strokeLinecap="round"
+        <motion.g
           initial={false}
           animate={{ rotate: angle }}
-          transformOrigin={`${cx}px ${cy}px`}
-          style={{ originX: cx, originY: cy }}
-        />
+          style={{ originX: `${cx}px`, originY: `${cy}px` }}
+        >
+          <line
+            x1={cx} y1={cy} x2={cx} y2={cy - r + 8}
+            stroke={color} strokeWidth="2" strokeLinecap="round"
+          />
+        </motion.g>
         <circle cx={cx} cy={cy} r={5} fill={color} />
       </svg>
       <div className="text-3xl tabular-nums font-semibold mt-1" style={{ color }}>
